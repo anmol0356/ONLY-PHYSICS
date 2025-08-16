@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Billing Receipt with Watermark</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 700px;
+    margin: 20px auto;
+    background: #f5f5f5;
+    padding: 20px;
+    border-radius: 8px;
+    position: relative;
+  }
+  /* Watermark on whole webpage */
+  body::before {
+    content: "Website made by Anmol Singh";
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    font-size: 80px;
+    color: rgba(0, 0, 0, 0.05);
+    user-select: none;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 0;
+  }
+
+  h2 {
+    text-align: center;
+    color: #333;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+  }
+  th, td {
+    padding: 8px;
+    border: 1px solid #ddd;
+    text-align: center;
+  }
+  input[type="text"], input[type="number"] {
+    width: 90%;
+    padding: 6px;
+    margin-bottom: 10px;
+  }
+  button {
+    padding: 10px 15px;
+    background-color: #2d2d6b;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-right: 10px;
+  }
+  button:hover {
+    background-color: #1a1a40;
+  }
+  #receipt {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-top: 20px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    display: none;
+    position: relative;
+    z-index: 1;
+  }
+  #receipt h3 {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  #receipt table {
+    margin-bottom: 10px;
+  }
+  .input-row {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+  }
+  .input-row label {
+    flex: 1;
+  }
+  .input-row input {
+    flex: 2;
+  }
+</style>
+</head>
+<body>
+
+<h2>Billing Receipt Generator</h2>
+
+<div class="input-row">
+  <label>Customer Name: <input type="text" id="customerName" placeholder="Enter customer name" /></label>
+  <label>Phone Number: <input type="text" id="customerPhone" placeholder="Enter phone number" /></label>
+</div>
+
+<table id="itemsTable">
+  <thead>
+    <tr>
+      <th>Item Name</th>
+      <th>Quantity</th>
+      <th>Price (per unit)</th>
+      <th>Total</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody id="itemsBody">
+    <tr>
+      <td><input type="text" class="itemName" placeholder="Item name" /></td>
+      <td><input type="number" class="itemQty" min="1" value="1" /></td>
+      <td><input type="number" class="itemPrice" min="0" step="0.01" value="0" /></td>
+      <td class="itemTotal">0</td>
+      <td><button onclick="removeRow(this)">Remove</button></td>
+    </tr>
+  </tbody>
+</table>
+
+<button onclick="addRow()">+ Add Item</button>
+
+<div class="input-row" style="margin-top:10px;">
+  <label>Tax Percentage (%): <input type="number" id="taxPercent" min="0" max="100" step="0.01" value="0" /></label>
+  <label>Discount (fixed or %): <input type="text" id="discount" placeholder="e.g. 50 or 10%" /></label>
+</div>
+
+<button onclick="generateReceipt()">Generate Receipt</button>
+
+<div id="receipt">
+  <h3>Billing Receipt</h3>
+  <div id="customerInfo"></div>
+  <div id="receiptContent"></div>
+  <h4>Subtotal: ₹<span id="subtotalAmount">0.00</span></h4>
+  <h4>Tax: ₹<span id="taxAmount">0.00</span></h4>
+  <h4>Discount: -₹<span id="discountAmount">0.00</span></h4>
+  <h2>Total Amount: ₹<span id="totalAmount">0.00</span></h2>
+  <button onclick="printReceipt()">Print Receipt</button>
+</div>
+
+<script>
+  function addRow() {
+    const tbody = document.getElementById('itemsBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" class="itemName" placeholder="Item name" /></td>
+      <td><input type="number" class="itemQty" min="1" value="1" /></td>
+      <td><input type="number" class="itemPrice" min="0" step="0.01" value="0" /></td>
+      <td class="itemTotal">0</td>
+      <td><button onclick="removeRow(this)">Remove</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  function removeRow(btn) {
+    const tr = btn.parentElement.parentElement;
+    tr.remove();
+  }
+
+  function parseDiscount(discountStr, subtotal) {
+    discountStr = discountStr.trim();
+    if (!discountStr) return 0;
+    if (discountStr.endsWith('%')) {
+      const percent = parseFloat(discountStr.slice(0, -1));
+      if (isNaN(percent) || percent < 0 || percent > 100) return 0;
+      return (percent / 100) * subtotal;
+    }
+    const fixed = parseFloat(discountStr);
+    return isNaN(fixed) || fixed < 0 ? 0 : fixed;
+  }
+
+  function generateReceipt() {
+    const customerName = document.getElementById('customerName').value.trim();
+    const customerPhone = document.getElementById('customerPhone').value.trim();
+
+    if (!customerName) {
+      alert('Please enter customer name.');
+      return;
+    }
+
+    const itemNames = document.querySelectorAll('.itemName');
+    const itemQtys = document.querySelectorAll('.itemQty');
+    const itemPrices = document.querySelectorAll('.itemPrice');
+    const receiptContent = document.getElementById('receiptContent');
+    let subtotal = 0;
+    let valid = true;
+
+    let html = `<table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th style="border:1px solid #ddd;padding:6px;">Item</th>
+          <th style="border:1px solid #ddd;padding:6px;">Quantity</th>
+          <th style="border:1px solid #ddd;padding:6px;">Price</th>
+          <th style="border:1px solid #ddd;padding:6px;">Total</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    for(let i=0; i < itemNames.length; i++) {
+      const name = itemNames[i].value.trim();
+      const qty = parseInt(itemQtys[i].value);
+      const price = parseFloat(itemPrices[i].value);
+      if(!name) {
+        alert('Please enter item name at row ' + (i+1));
+        valid = false;
+        break;
+      }
+      if(qty <= 0 || isNaN(qty)) {
+        alert('Please enter valid quantity at row ' + (i+1));
+        valid = false;
+        break;
+      }
+      if(price < 0 || isNaN(price)) {
+        alert('Please enter valid price at row ' + (i+1));
+        valid = false;
+        break;
+      }
+
+      const total = qty * price;
+      subtotal += total;
+
+      html += `<tr>
+        <td style="border:1px solid #ddd;padding:6px;">${name}</td>
+        <td style="border:1px solid #ddd;padding:6px;">${qty}</td>
+        <td style="border:1px solid #ddd;padding:6px;">₹${price.toFixed(2)}</td>
+        <td style="border:1px solid #ddd;padding:6px;">₹${total.toFixed(2)}</td>
+      </tr>`;
+    }
+
+    html += `</tbody></table>`;
+
+    if(!valid) return;
+
+    // Tax and discount
+    const taxPercent = parseFloat(document.getElementById('taxPercent').value) || 0;
+    const discountStr = document.getElementById('discount').value;
+
+    const taxAmount = (taxPercent / 100) * subtotal;
+    const discountAmount = parseDiscount(discountStr, subtotal + taxAmount);
+
+    const totalAmount = subtotal + taxAmount - discountAmount;
+
+    // Show receipt
+    receiptContent.innerHTML = html;
+    document.getElementById('subtotalAmount').textContent = subtotal.toFixed(2);
+    document.getElementById('taxAmount').textContent = taxAmount.toFixed(2);
+    document.getElementById('discountAmount').textContent = discountAmount.toFixed(2);
+    document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
+
+    document.getElementById('customerInfo').innerHTML = `
+      <p><strong>Customer:</strong> ${customerName}</p>
+      <p><strong>Phone:</strong> ${customerPhone || 'N/A'}</p>
+      <hr/>
+    `;
+
+    document.getElementById('receipt').style.display = 'block';
+  }
+
+  function printReceipt() {
+    const printContent = document.getElementById('receipt').innerHTML;
+    const originalContent = document.body.innerHTML;
+
+    document.body.innerHTML = printContent;
+    window.print();
+    document.body.innerHTML = originalContent;
+    location.reload();
+  }
+</script>
+
+</body>
+</html>
